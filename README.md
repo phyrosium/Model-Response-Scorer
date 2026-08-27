@@ -3,7 +3,7 @@
 A tool for generating LLM responses to a set of prompts, scoring them against custom rubrics, and comparing manual vs. automated scoring.
 
 ## Status
-🚧 Step 3: Prompt endpoints and synchronous generation — prompts can be created and listed, and a stored prompt can be sent to Claude with the reply persisted to `responses`.
+🚧 Step 4: Rubric builder — rubrics and their criteria can be created and read. Scoring itself is not built yet.
 
 ## Stack
 - Frontend: React + TypeScript (Vite)
@@ -77,6 +77,9 @@ Three containers, one network:
 | `POST` | `/prompts` | Create a prompt (`content` required, `title` optional) |
 | `GET` | `/prompts` | List prompts, newest first |
 | `POST` | `/generate` | Send a stored prompt to Claude and persist the reply |
+| `POST` | `/rubrics` | Create a rubric together with its criteria |
+| `GET` | `/rubrics` | List rubrics, each with its criteria |
+| `GET` | `/rubrics/{id}` | Fetch one rubric |
 
 Interactive docs are at http://localhost:8000/docs.
 
@@ -104,6 +107,22 @@ Two details worth knowing about the call:
 
 Nothing is written to `responses` unless generation succeeds.
 
+### Rubrics
+
+A rubric is created in one call along with all of its criteria — there is no
+separate add-criterion endpoint, so a rubric must be posted with at least one
+criterion or it could never be scored against.
+
+`position` is assigned from the order criteria appear in the request rather
+than being accepted from the client, so display order is whatever order you
+sent. A `weight` of 0 is legal and means the criterion is scored but excluded
+from any weighted aggregate.
+
+Validation happens at the edge rather than falling through to Postgres:
+duplicate criterion names, a non-positive `max_score`, a negative `weight`, or
+an empty criteria list all return 422. A duplicate rubric name returns 409.
+Failed creates roll back cleanly — no orphaned criteria.
+
 ## Database schema
 
 ```
@@ -130,6 +149,7 @@ rubrics are unaffected.
 - [x] Database schema (prompts, responses, rubrics, criteria, scores)
 - [x] Prompt create/list + synchronous LLM generation endpoint
 - [ ] Remaining prompt CRUD (fetch by id, update, delete)
-- [ ] Rubric builder
+- [x] Rubric builder (create + read)
+- [ ] Rubric edit/delete
 - [ ] Manual scoring UI
 - [ ] Auto-scoring via LLM + manual-vs-auto comparison view
