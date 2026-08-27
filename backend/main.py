@@ -1,8 +1,8 @@
-import os
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
+
+from database import engine
 
 app = FastAPI(title="AI Eval Tool API")
 
@@ -13,11 +13,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql://eval_user:eval_pass@db:5432/eval_db"
-)
-engine = create_engine(DATABASE_URL)
 
 
 @app.get("/health")
