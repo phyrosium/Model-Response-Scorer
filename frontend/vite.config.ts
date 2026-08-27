@@ -6,5 +6,10 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    // inotify events don't cross the Windows bind mount into WSL2, so HMR
+    // needs polling to see edits
+    watch: {
+      usePolling: true,
+    },
   },
 })

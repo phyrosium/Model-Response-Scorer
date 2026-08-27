@@ -21,6 +21,8 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://eval_user:eval_pass@db:5432/eval_db
+      # watchfiles can't see inotify events through the Windows bind mount
+      WATCHFILES_FORCE_POLLING: "true"
     ports:
       - "8000:8000"
     volumes:
