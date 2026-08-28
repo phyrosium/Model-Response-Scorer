@@ -20,16 +20,15 @@ body {
   line-height: 1.5;
 }
 
-.shell { max-width: 960px; margin: 0 auto; padding: 0 1.5rem 3rem; }
+.shell { max-width: 1280px; margin: 0 auto; padding: 0 1.5rem 3rem; }
 
 header.top {
   border-bottom: 1px solid var(--border);
   background: var(--panel);
   margin-bottom: 1.5rem;
 }
+/* deliberately not capped like .shell -- the bar runs the full viewport width */
 header.top .inner {
-  max-width: 960px;
-  margin: 0 auto;
   padding: 1rem 1.5rem;
   display: flex;
   align-items: baseline;
@@ -69,8 +68,10 @@ input, textarea, select {
 textarea { resize: vertical; min-height: 5rem; }
 .field { margin-bottom: 0.75rem; }
 .row { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; }
-.row > * { flex: 1; min-width: 0; }
-.row > .narrow { flex: 0 0 6.5rem; }
+/* min-width gives the row something to wrap at -- with min-width:0 the children
+   shrink indefinitely instead, collapsing text inputs to a few pixels */
+.row > * { flex: 1; min-width: 12rem; }
+.row > .narrow { flex: 0 0 6.5rem; min-width: 6.5rem; }
 
 button {
   font: inherit;
