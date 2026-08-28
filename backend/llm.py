@@ -7,8 +7,10 @@ to run a real batch, the generation call should move behind a task queue.
 
 import logging
 import os
+from dataclasses import dataclass
 
 import anthropic
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -92,3 +94,146 @@ def generate(prompt_text: str, model: str) -> str:
         raise GenerationError("Claude returned no text content.", 502)
 
     return text
+
+
+# --- LLM-as-judge ------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class JudgeCriterion:
+    """The slice of a rubric criterion the judge is shown."""
+
+    id: int
+    name: str
+    description: str | None
+    max_score: int
+
+
+class _CriterionVerdict(BaseModel):
+    criterion_id: int = Field(description="The id of the criterion being scored")
+    value: float = Field(description="The score, between 0 and that criterion's max_score")
+    rationale: str = Field(description="One or two sentences justifying the score")
+
+
+class _JudgeVerdict(BaseModel):
+    scores: list[_CriterionVerdict]
+
+
+JUDGE_SYSTEM = """You are grading a language model's response against a rubric.
+
+Score every criterion you are given, independently, using the full range each
+criterion allows. Do not inflate: reserve the top of a scale for a response that
+genuinely could not be improved on that dimension, and use low scores where they
+are warranted. Judge only the criterion in front of you -- a response can be
+accurate but verbose, or concise but wrong.
+
+Return one entry per criterion, echoing the criterion_id you were given."""
+
+
+def _render_criteria(criteria: list[JudgeCriterion]) -> str:
+    lines = []
+    for c in criteria:
+        line = f"- id={c.id} | {c.name} | scored 0 to {c.max_score}"
+        if c.description:
+            line += f" | {c.description}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def judge(
+    prompt_text: str,
+    response_text: str,
+    criteria: list[JudgeCriterion],
+    model: str,
+) -> list[_CriterionVerdict]:
+    """Score one response against a rubric, returning a verdict per criterion.
+
+    The judge is deliberately not shown any existing manual scores. Anchoring it
+    to the human's numbers would make the manual-vs-auto comparison meaningless.
+    """
+    client = _client()
+
+    user_content = (
+        f"# Original prompt\n{prompt_text}\n\n"
+        f"# Model response to grade\n{response_text}\n\n"
+        f"# Rubric criteria\n{_render_criteria(criteria)}"
+    )
+
+    try:
+        message = client.messages.parse(
+            model=model,
+            max_tokens=MAX_TOKENS,
+            system=JUDGE_SYSTEM,
+            messages=[{"role": "user", "content": user_content}],
+            output_format=_JudgeVerdict,
+        )
+    except anthropic.BadRequestError as e:
+        raise GenerationError(f"Anthropic rejected the request: {e.message}", 400) from e
+    except anthropic.NotFoundError as e:
+        raise GenerationError(f"Unknown model {model!r}.", 400) from e
+    except anthropic.AuthenticationError as e:
+        raise GenerationError("ANTHROPIC_API_KEY was rejected by Anthropic.", 502) from e
+    except anthropic.PermissionDeniedError as e:
+        raise GenerationError(f"This API key cannot access {model!r}.", 502) from e
+    except anthropic.RateLimitError as e:
+        raise GenerationError("Rate limited by Anthropic. Try again shortly.", 429) from e
+    except anthropic.APIConnectionError as e:
+        raise GenerationError("Could not reach the Anthropic API.", 504) from e
+    except anthropic.APIStatusError as e:
+        raise GenerationError(f"Anthropic returned {e.status_code}.", 502) from e
+
+    if message.stop_reason == "refusal":
+        detail = getattr(message.stop_details, "category", None)
+        raise GenerationError(
+            f"Claude declined to grade this response (category: {detail}).", 422
+        )
+
+    verdict = message.parsed_output
+    if verdict is None:
+        raise GenerationError("The judge returned no parsable verdict.", 502)
+
+    return validate_verdict(verdict.scores, criteria)
+
+
+def validate_verdict(
+    scores: list[_CriterionVerdict], criteria: list[JudgeCriterion]
+) -> list[_CriterionVerdict]:
+    """Reject a verdict that doesn't line up with the rubric it was given.
+
+    All-or-nothing on purpose: a partial or out-of-range verdict means the judge
+    misread the rubric, and storing half of it would leave the comparison view
+    quietly wrong.
+    """
+    by_id = {c.id: c for c in criteria}
+
+    returned = [s.criterion_id for s in scores]
+    duplicates = sorted({i for i in returned if returned.count(i) > 1})
+    if duplicates:
+        raise GenerationError(
+            f"The judge scored criteria more than once: {duplicates}", 502
+        )
+
+    unknown = sorted(set(returned) - set(by_id))
+    if unknown:
+        raise GenerationError(
+            f"The judge invented criterion ids not in the rubric: {unknown}", 502
+        )
+
+    missing = sorted(set(by_id) - set(returned))
+    if missing:
+        raise GenerationError(
+            f"The judge skipped criteria: "
+            f"{[by_id[i].name for i in missing]}",
+            502,
+        )
+
+    for s in scores:
+        criterion = by_id[s.criterion_id]
+        if not 0 <= s.value <= criterion.max_score:
+            raise GenerationError(
+                f"The judge scored {criterion.name!r} at {s.value}, outside its "
+                f"0-{criterion.max_score} range.",
+                502,
+            )
+
+    return scores

@@ -81,6 +81,12 @@ export const api = {
     criteria: NewCriterion[]
   }) => post<Rubric>('/rubrics', input),
 
+  autoScore: (input: {
+    response_id: number
+    rubric_id: number
+    model?: string
+  }) => post<Score[]>('/auto-score', input),
+
   listScores: (responseId: number) =>
     request<Score[]>(`/responses/${responseId}/scores`),
   saveScore: (input: {

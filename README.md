@@ -3,9 +3,9 @@
 A tool for generating LLM responses to a set of prompts, scoring them against custom rubrics, and comparing manual vs. automated scoring.
 
 ## Status
-🚧 Step 7: React UI — three working screens over the manual-evaluation
-backend. You can write a prompt, generate a response from Claude, build a
-rubric, and score the response against it.
+Feature-complete for the original roadmap. Write a prompt, generate a response
+from Claude, build a rubric, score the response by hand, have an LLM judge score
+it independently, and compare the two side by side.
 
 ## Stack
 - Frontend: React + TypeScript (Vite)
@@ -84,6 +84,7 @@ Three routes behind `react-router`:
 | `/prompts` | Write prompts, generate responses against a chosen model, read them back |
 | `/rubrics` | Build a rubric with any number of criteria; list existing ones |
 | `/scoring` | Pick a prompt → response → rubric, then score each criterion |
+| `/comparison` | Run the LLM judge and compare its scores against the manual ones |
 
 `src/api/client.ts` is the only place that talks to the backend. It flattens
 FastAPI's two error shapes into one string — `detail` is a plain string for an
@@ -95,6 +96,15 @@ response shows what you already gave it and the buttons read *Update* rather
 than *Save*. It shows a running weighted total: each criterion contributes
 `value / max_score * weight`, divided by the total weight of the criteria that
 have been scored so far.
+
+The comparison screen puts both sources in one table with a per-criterion delta,
+both rationales, and a summary line: how many criteria the two sides agreed on
+exactly, the mean absolute difference, and each side's weighted total.
+
+**Known gap: the frontend has no automated tests.** Everything here was verified
+by hand in a browser against real data. Adding coverage would mean Vitest,
+Testing Library and a mocked API layer; that was judged not worth the scope for
+this project.
 
 ## Architecture
 Three containers, one network:
@@ -115,6 +125,7 @@ Three containers, one network:
 | `GET` | `/rubrics/{id}` | Fetch one rubric |
 | `POST` | `/scores` | Upsert the manual score for one criterion on one response |
 | `GET` | `/responses/{id}/scores` | Every score on a response, manual and auto |
+| `POST` | `/auto-score` | Have an LLM judge score a response against a whole rubric |
 
 Interactive docs are at http://localhost:8000/docs.
 
@@ -185,6 +196,36 @@ weight) to render without a second request. Results are ordered by criterion
 position. Auto scores don't exist yet, but the endpoint was verified against an
 injected auto row so the comparison view can read from it unchanged.
 
+### Auto-scoring
+
+`POST /auto-score` takes a response and a rubric, sends both to Claude with the
+criteria and their scales, and stores one `auto` score per criterion. It uses
+structured outputs (`client.messages.parse`) so the verdict comes back as a
+validated object rather than prose to be parsed.
+
+Two decisions matter more than the rest:
+
+**The judge is never shown the manual scores.** Anchoring it to the human's
+numbers would make the comparison meaningless — it would be measuring how well
+Claude copies a number it was just handed. There is a test asserting the manual
+rationale never appears in anything sent to the judge.
+
+**A verdict is accepted whole or not at all.** If the judge skips a criterion,
+invents an id that isn't in the rubric, scores one twice, or returns a value
+outside that criterion's range, the entire batch is rejected with a 502 and
+nothing is written. A half-stored verdict would leave the comparison view
+quietly wrong, which is worse than a visible failure.
+
+Re-running is an upsert, like manual scoring, so a second opinion replaces the
+first rather than accumulating.
+
+**On non-determinism:** running the judge twice on the same response with the
+same rubric does not reliably give the same answer. Observed during development:
+one response scored Tone 4 on the first run and 5 on the second, with different
+rationales both times. That is worth knowing before treating a single auto score
+as ground truth — for anything load-bearing, several runs would be more honest
+than one.
+
 ## Database schema
 
 ```
@@ -215,5 +256,6 @@ rubrics are unaffected.
 - [ ] Rubric edit/delete
 - [x] Manual scoring endpoints
 - [ ] Score delete (update is handled by the upsert)
-- [ ] **Next milestone: React UI** — prompt list, rubric builder, scoring panel
-- [ ] Auto-scoring via LLM + manual-vs-auto comparison view
+- [x] React UI — prompt list, rubric builder, scoring panel, comparison view
+- [x] Auto-scoring via LLM + manual-vs-auto comparison view
+- [ ] Frontend tests (deliberate gap — hand-verified in a browser instead)

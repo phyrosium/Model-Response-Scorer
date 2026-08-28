@@ -26,6 +26,7 @@ export default function App() {
             <NavLink to="/prompts">Prompts</NavLink>
             <NavLink to="/rubrics">Rubrics</NavLink>
             <NavLink to="/scoring">Scoring</NavLink>
+            <NavLink to="/comparison">Comparison</NavLink>
           </nav>
           <div style={{ marginLeft: 'auto' }}>
             <HealthBadge />

@@ -126,3 +126,11 @@ class ScoreOut(BaseModel):
     rationale: str | None
     created_at: datetime
     criterion: ScoreCriterionOut
+
+
+class AutoScoreRequest(BaseModel):
+    """Ask an LLM judge to score one response against one rubric."""
+
+    response_id: int
+    rubric_id: int
+    model: str = DEFAULT_MODEL

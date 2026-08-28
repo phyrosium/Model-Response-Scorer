@@ -15,6 +15,7 @@ from schemas import (
     PromptCreate,
     PromptOut,
     ResponseOut,
+    AutoScoreRequest,
     RubricCreate,
     RubricOut,
     ScoreCreate,
@@ -244,3 +245,59 @@ def list_scores_for_response(response_id: int, db: Session = Depends(get_db)):
             .order_by(RubricCriterion.position, Score.source)
         ).all()
     )
+
+
+@app.post("/auto-score", response_model=list[ScoreOut], status_code=201)
+def auto_score(payload: AutoScoreRequest, db: Session = Depends(get_db)):
+    """Have an LLM judge score a response against every criterion in a rubric.
+
+    All criteria are written or none are. A judge that misreads the rubric --
+    skipping a criterion, inventing one, going out of range -- is rejected whole
+    rather than half-stored, which would leave the comparison view quietly wrong.
+    """
+    response = db.get(Response, payload.response_id)
+    if response is None:
+        raise HTTPException(404, f"No response with id {payload.response_id}")
+
+    rubric = _load_rubric(db, payload.rubric_id)
+    if rubric is None:
+        raise HTTPException(404, f"No rubric with id {payload.rubric_id}")
+
+    criteria = [
+        llm.JudgeCriterion(
+            id=c.id, name=c.name, description=c.description, max_score=c.max_score
+        )
+        for c in rubric.criteria
+    ]
+
+    try:
+        verdicts = llm.judge(
+            prompt_text=response.prompt.content,
+            response_text=response.content,
+            criteria=criteria,
+            model=payload.model,
+        )
+    except llm.GenerationError as e:
+        raise HTTPException(e.status_code, e.message) from e
+
+    written: list[int] = []
+    for verdict in verdicts:
+        statement = (
+            pg_insert(Score)
+            .values(
+                response_id=response.id,
+                criterion_id=verdict.criterion_id,
+                source=ScoreSource.auto,
+                value=verdict.value,
+                rationale=verdict.rationale,
+            )
+            .on_conflict_do_update(
+                constraint="uq_score_response_criterion_source",
+                set_={"value": verdict.value, "rationale": verdict.rationale},
+            )
+            .returning(Score.id)
+        )
+        written.append(db.scalar(statement))
+    db.commit()
+
+    return [_load_score(db, score_id) for score_id in written]
