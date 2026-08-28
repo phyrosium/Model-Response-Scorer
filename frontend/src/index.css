@@ -118,3 +118,13 @@ table.compare th, table.compare td {
 table.compare th { font-weight: 600; color: var(--muted); font-size: 0.8rem; }
 table.compare td:nth-child(2), table.compare td:nth-child(3) { width: 32%; }
 table.compare td:last-child { text-align: center; width: 4.5rem; }
+
+/* text-only pages: cap the measure so prose stays readable in the wide shell */
+.prose { max-width: 68ch; }
+.prose h3 { margin: 0 0 0.3rem; font-size: 0.95rem; }
+.prose p { margin: 0 0 0.7rem; }
+.prose p:last-child { margin-bottom: 0; }
+ol.steps { margin: 0; padding-left: 1.4rem; }
+ol.steps > li { margin-bottom: 1.1rem; }
+ol.steps > li:last-child { margin-bottom: 0; }
+ol.steps > li::marker { color: var(--muted); font-size: 0.85rem; }
