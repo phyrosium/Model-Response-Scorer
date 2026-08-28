@@ -7,4 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
 
 COPY . .
 
+# invoked through sh rather than executed directly: /app is replaced by a bind
+# mount at runtime, so the exec bit set in the image would not survive
+ENTRYPOINT ["sh", "/app/entrypoint.sh"]
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

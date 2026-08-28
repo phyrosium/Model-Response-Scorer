@@ -1,0 +1,9 @@
+# Shell scripts must keep LF endings. A CRLF entrypoint.sh is bind-mounted
+# straight into the Linux container and fails with "set: Illegal option -",
+# which takes the backend down on any Windows clone.
+*.sh text eol=lf
+
+# Same reasoning for anything else the container executes or parses directly.
+Dockerfile text eol=lf
+*.yml text eol=lf
+.env.example text eol=lf

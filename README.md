@@ -37,9 +37,41 @@ Then check:
 - Backend health check: http://localhost:8000/health
 - Backend root: http://localhost:8000/
 
+### What happens on startup
+
+The backend container runs `backend/entrypoint.sh` before starting the app. It
+applies any outstanding Alembic migrations, then seeds starter data, then hands
+off to uvicorn. A fresh clone therefore comes up with its schema in place and a
+few rubrics ready to use, with no manual steps.
+
+Both steps are safe to repeat. Migrations no-op once the database is at head,
+and the seed does nothing unless the rubrics table is empty.
+
+### Starter rubrics
+
+`backend/seed.py` inserts three rubrics on a fresh database: **Answer quality**,
+**Reasoning quality** and **Instruction following**, each with three criteria.
+
+They are ordinary rows. Nothing in the application treats them as special, so
+they can be edited, scored against, or deleted exactly like a rubric built in
+the UI. The seed runs only when the rubrics table is completely empty, rather
+than checking each name, so a starter rubric you delete stays deleted instead of
+reappearing on the next restart.
+
+To edit what gets seeded, change `STARTER_RUBRICS` in `backend/seed.py`. To reset
+a database back to just the starter rubrics, drop the volume and start again:
+
+```bash
+docker compose down -v && docker compose up
+```
+
+That destroys every prompt, response and score as well, so it is a development
+convenience rather than something to run casually.
+
 ### Migrations
 
-Alembic runs inside the backend container, which already has the deps and can reach `db`:
+Migrations are applied automatically at container start, so this is only needed
+to apply one mid-session without a restart:
 
 ```bash
 docker compose exec backend alembic upgrade head
