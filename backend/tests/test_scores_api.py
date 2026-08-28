@@ -122,3 +122,14 @@ class TestListing:
         assert criterion["name"] == "Concision"
         assert criterion["max_score"] == 3
         assert criterion["weight"] == 1.0
+
+
+class TestResponseListing:
+    def test_lists_responses_for_a_prompt(self, client, sample):
+        r = client.get(f"/prompts/{sample.prompt.id}/responses")
+        assert r.status_code == 200
+        ids = {item["id"] for item in r.json()}
+        assert {sample.response.id, sample.unscored.id} <= ids
+
+    def test_unknown_prompt_is_404(self, client):
+        assert client.get("/prompts/1000000000/responses").status_code == 404

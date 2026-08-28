@@ -1,40 +1,40 @@
+import { NavLink, Outlet } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 
-interface HealthResponse {
-  status: string
-  database: string
-}
+import { api } from './api/client'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-
-function App() {
-  const [health, setHealth] = useState<HealthResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
+function HealthBadge() {
+  const [label, setLabel] = useState('checking...')
 
   useEffect(() => {
-    fetch(`${API_URL}/health`)
-      .then((res) => res.json())
-      .then((data: HealthResponse) => setHealth(data))
-      .catch((err) => setError(String(err)))
+    api
+      .health()
+      .then((h) => setLabel(`api ${h.status} · db ${h.database}`))
+      .catch(() => setLabel('api unreachable'))
   }, [])
 
-  return (
-    <div style={{ fontFamily: 'sans-serif', padding: '2rem' }}>
-      <h1>AI Eval Tool</h1>
-      <p>Skeleton is running. This page confirms the frontend can reach the backend and Postgres.</p>
-
-      {error && <p style={{ color: 'red' }}>Error reaching API: {error}</p>}
-
-      {health ? (
-        <ul>
-          <li>API status: {health.status}</li>
-          <li>Database: {health.database}</li>
-        </ul>
-      ) : (
-        !error && <p>Checking backend health...</p>
-      )}
-    </div>
-  )
+  return <span className="pill">{label}</span>
 }
 
-export default App
+export default function App() {
+  return (
+    <>
+      <header className="top">
+        <div className="inner">
+          <h1>Model Response Scorer</h1>
+          <nav>
+            <NavLink to="/prompts">Prompts</NavLink>
+            <NavLink to="/rubrics">Rubrics</NavLink>
+            <NavLink to="/scoring">Scoring</NavLink>
+          </nav>
+          <div style={{ marginLeft: 'auto' }}>
+            <HealthBadge />
+          </div>
+        </div>
+      </header>
+      <div className="shell">
+        <Outlet />
+      </div>
+    </>
+  )
+}

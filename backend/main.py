@@ -23,7 +23,7 @@ from schemas import (
 
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI(title="AI Eval Tool API")
+app = FastAPI(title="Model Response Scorer API")
 
 # Allow the frontend (running on a different port/container) to call this API
 app.add_middleware(
@@ -49,7 +49,7 @@ def health_check():
 
 @app.get("/")
 def root():
-    return {"message": "AI Eval Tool API is running"}
+    return {"message": "Model Response Scorer API is running"}
 
 
 @app.post("/prompts", response_model=PromptOut, status_code=201)
@@ -65,6 +65,25 @@ def create_prompt(payload: PromptCreate, db: Session = Depends(get_db)):
 @app.get("/prompts", response_model=list[PromptOut])
 def list_prompts(db: Session = Depends(get_db)):
     return list(db.scalars(select(Prompt).order_by(Prompt.created_at.desc())).all())
+
+
+@app.get("/prompts/{prompt_id}/responses", response_model=list[ResponseOut])
+def list_responses_for_prompt(prompt_id: int, db: Session = Depends(get_db)):
+    """Every generated response for a prompt, newest first.
+
+    The scoring UI needs this to choose what to score -- without it a response is
+    only ever visible in the reply to the POST /generate that created it.
+    """
+    if db.get(Prompt, prompt_id) is None:
+        raise HTTPException(404, f"No prompt with id {prompt_id}")
+
+    return list(
+        db.scalars(
+            select(Response)
+            .where(Response.prompt_id == prompt_id)
+            .order_by(Response.created_at.desc())
+        ).all()
+    )
 
 
 @app.post("/generate", response_model=ResponseOut, status_code=201)

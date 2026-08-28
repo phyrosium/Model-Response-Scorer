@@ -1,12 +1,11 @@
-# AI Eval Tool
+# Model Response Scorer
 
 A tool for generating LLM responses to a set of prompts, scoring them against custom rubrics, and comparing manual vs. automated scoring.
 
 ## Status
-🚧 Step 5: Manual scoring — the backend is feature-complete for manual
-evaluation: prompts, generation, rubrics, and scoring all work over HTTP.
-**The frontend is still the Step 1 health-check page; real screens are the
-next milestone.**
+🚧 Step 7: React UI — three working screens over the manual-evaluation
+backend. You can write a prompt, generate a response from Claude, build a
+rubric, and score the response against it.
 
 ## Stack
 - Frontend: React + TypeScript (Vite)
@@ -75,6 +74,27 @@ docker compose exec backend pytest
 
 The suite needs the `db` service up. It leaves the database exactly as it found
 it — running it twice in a row is a good check that the rollback is working.
+
+## Frontend
+
+Three routes behind `react-router`:
+
+| Route | Screen |
+| --- | --- |
+| `/prompts` | Write prompts, generate responses against a chosen model, read them back |
+| `/rubrics` | Build a rubric with any number of criteria; list existing ones |
+| `/scoring` | Pick a prompt → response → rubric, then score each criterion |
+
+`src/api/client.ts` is the only place that talks to the backend. It flattens
+FastAPI's two error shapes into one string — `detail` is a plain string for an
+`HTTPException` but an array of field objects for a 422, and rendering the
+array directly would show `[object Object]` on every validation failure.
+
+The scoring panel prefills from existing manual scores, so re-opening a
+response shows what you already gave it and the buttons read *Update* rather
+than *Save*. It shows a running weighted total: each criterion contributes
+`value / max_score * weight`, divided by the total weight of the criteria that
+have been scored so far.
 
 ## Architecture
 Three containers, one network:
