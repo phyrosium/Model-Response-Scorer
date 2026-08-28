@@ -1,3 +1,6 @@
 # Test-only dependencies. Installed into the image because this is a dev image
 # (it runs uvicorn --reload); a production Dockerfile should skip this file.
 pytest==9.1.1
+# starlette's TestClient is built on httpx; the anthropic SDK pulls httpx2,
+# which is a different package and does not satisfy it
+httpx==0.28.1

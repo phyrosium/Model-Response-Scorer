@@ -62,9 +62,19 @@ migration, which had to be added by hand).
 docker compose exec backend pytest
 ```
 
-`backend/tests/` stubs the Anthropic client to cover the branches that are
-awkward to trigger live — a refusal, a reply with no text block, a missing
-API key — plus the thinking-block filtering.
+`backend/tests/` has two kinds of test:
+
+- **Unit** — stubs the Anthropic client to cover branches that are awkward to
+  trigger live (a refusal, a reply with no text block, a missing API key), plus
+  the Pydantic validation rules.
+- **Endpoint** — runs against the real Postgres inside a transaction that is
+  rolled back after each test, so the actual constraints, enum type and unique
+  index are exercised without leaving rows behind. This is where the paths
+  Pydantic can't reach are covered: the per-criterion ceiling, the 404s, the
+  duplicate-rubric 409, and the upsert.
+
+The suite needs the `db` service up. It leaves the database exactly as it found
+it — running it twice in a row is a good check that the rollback is working.
 
 ## Architecture
 Three containers, one network:
@@ -83,7 +93,7 @@ Three containers, one network:
 | `POST` | `/rubrics` | Create a rubric together with its criteria |
 | `GET` | `/rubrics` | List rubrics, each with its criteria |
 | `GET` | `/rubrics/{id}` | Fetch one rubric |
-| `POST` | `/scores` | Record a manual score for one criterion on one response |
+| `POST` | `/scores` | Upsert the manual score for one criterion on one response |
 | `GET` | `/responses/{id}/scores` | Every score on a response, manual and auto |
 
 Interactive docs are at http://localhost:8000/docs.
@@ -143,8 +153,11 @@ So `POST /scores` looks the criterion up and rejects anything above its
 `max_score` with a 422. That guard exists only at the API layer; writes made
 straight to Postgres can still violate it.
 
-Re-scoring the same cell returns 409 rather than overwriting — there is no
-update endpoint yet, which the scoring UI will need.
+`POST /scores` is an upsert: re-submitting a cell replaces the existing manual
+score rather than erroring, because a scoring panel is used by changing your
+mind. It's a single `ON CONFLICT DO UPDATE` rather than a read-then-write, so
+two concurrent submissions for the same cell can't both insert. The row keeps
+its original `id` and `created_at`.
 
 `GET /responses/{id}/scores` returns manual and auto scores together, each
 tagged with its `source` and carrying enough of the criterion (name, max_score,
@@ -181,6 +194,6 @@ rubrics are unaffected.
 - [x] Rubric builder (create + read)
 - [ ] Rubric edit/delete
 - [x] Manual scoring endpoints
-- [ ] Score update/delete (needed before the scoring UI is usable)
+- [ ] Score delete (update is handled by the upsert)
 - [ ] **Next milestone: React UI** — prompt list, rubric builder, scoring panel
 - [ ] Auto-scoring via LLM + manual-vs-auto comparison view

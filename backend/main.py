@@ -3,6 +3,7 @@ import logging
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -153,9 +154,15 @@ def get_rubric(rubric_id: int, db: Session = Depends(get_db)):
     return rubric
 
 
-@app.post("/scores", response_model=ScoreOut, status_code=201)
-def create_score(payload: ScoreCreate, db: Session = Depends(get_db)):
-    """Record a manual score for one criterion on one response."""
+@app.post("/scores", response_model=ScoreOut)
+def upsert_score(payload: ScoreCreate, db: Session = Depends(get_db)):
+    """Record or replace the manual score for one criterion on one response.
+
+    Upsert rather than create-only: a scoring panel is used by changing your mind,
+    so re-submitting a cell has to overwrite instead of erroring. This is a single
+    ON CONFLICT statement rather than a read-then-write, which keeps it atomic --
+    two concurrent submissions for the same cell can't both insert.
+    """
     if db.get(Response, payload.response_id) is None:
         raise HTTPException(404, f"No response with id {payload.response_id}")
 
@@ -172,25 +179,25 @@ def create_score(payload: ScoreCreate, db: Session = Depends(get_db)):
             f"for criterion {criterion.name!r}",
         )
 
-    score = Score(
-        response_id=payload.response_id,
-        criterion_id=payload.criterion_id,
-        source=ScoreSource.manual,
-        value=payload.value,
-        rationale=payload.rationale,
+    statement = (
+        pg_insert(Score)
+        .values(
+            response_id=payload.response_id,
+            criterion_id=payload.criterion_id,
+            source=ScoreSource.manual,
+            value=payload.value,
+            rationale=payload.rationale,
+        )
+        .on_conflict_do_update(
+            constraint="uq_score_response_criterion_source",
+            set_={"value": payload.value, "rationale": payload.rationale},
+        )
+        .returning(Score.id)
     )
-    db.add(score)
-    try:
-        db.commit()
-    except IntegrityError as e:
-        db.rollback()
-        raise HTTPException(
-            409,
-            f"criterion {criterion.name!r} already has a manual score for "
-            f"response {payload.response_id}",
-        ) from e
+    score_id = db.scalar(statement)
+    db.commit()
 
-    return _load_score(db, score.id)
+    return _load_score(db, score_id)
 
 
 def _load_score(db: Session, score_id: int) -> Score | None:
