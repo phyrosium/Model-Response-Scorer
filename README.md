@@ -3,7 +3,7 @@
 A tool for generating LLM responses to a set of prompts, scoring them against custom rubrics, and comparing manual vs. automated scoring.
 
 ## Status
-Feature-complete for the original roadmap. Write a prompt, generate a response
+Feature complete for the original roadmap. Write a prompt, generate a response
 from Claude, build a rubric, score the response by hand, have an LLM judge score
 it independently, and compare the two side by side.
 
@@ -101,8 +101,8 @@ docker compose exec backend pytest
 - **Endpoint**: runs against the real Postgres inside a transaction that is
   rolled back after each test, so the actual constraints, enum type and unique
   index are exercised without leaving rows behind. This is where the paths
-  Pydantic can't reach are covered: the per-criterion ceiling, the 404s, the
-  duplicate-rubric 409, and the upsert.
+  Pydantic can't reach are covered: the per criterion ceiling, the 404s, the
+  duplicate rubric 409, and the upsert.
 
 The suite needs the `db` service up. It leaves the database exactly as it found
 it, so running it twice in a row is a good check that the rollback is working.
@@ -190,7 +190,7 @@ Nothing is written to `responses` unless generation succeeds.
 ### Rubrics
 
 A rubric is created in one call along with all of its criteria. There is no
-separate add-criterion endpoint, so a rubric must be posted with at least one
+separate add criterion endpoint, so a rubric must be posted with at least one
 criterion or it could never be scored against.
 
 `position` is assigned from the order criteria appear in the request rather
@@ -207,9 +207,9 @@ Failed creates roll back cleanly, with no orphaned criteria.
 
 `POST /scores` records manual scores only. `source` is not accepted from the
 client, since letting a caller claim `auto` would corrupt the very comparison
-this tool exists to make. It is set server-side to `manual`.
+this tool exists to make. It is set server side to `manual`.
 
-The interesting validation is the per-criterion ceiling. `scores.value` has a
+The interesting validation is the per criterion ceiling. `scores.value` has a
 `>= 0` check constraint in the database but **no upper bound**, because the
 maximum lives on `rubric_criteria.max_score` in a different table, and Postgres
 check constraints can't reference another row. Verified directly: a raw
@@ -218,9 +218,9 @@ So `POST /scores` looks the criterion up and rejects anything above its
 `max_score` with a 422. That guard exists only at the API layer; writes made
 straight to Postgres can still violate it.
 
-`POST /scores` is an upsert: re-submitting a cell replaces the existing manual
+`POST /scores` is an upsert: re submitting a cell replaces the existing manual
 score rather than erroring, because a scoring panel is used by changing your
-mind. It's a single `ON CONFLICT DO UPDATE` rather than a read-then-write, so
+mind. It's a single `ON CONFLICT DO UPDATE` rather than a read then write, so
 two concurrent submissions for the same cell can't both insert. The row keeps
 its original `id` and `created_at`.
 
@@ -247,17 +247,17 @@ rationale never appears in anything sent to the judge.
 **A verdict is accepted whole or not at all.** If the judge skips a criterion,
 invents an id that isn't in the rubric, scores one twice, or returns a value
 outside that criterion's range, the entire batch is rejected with a 502 and
-nothing is written. A half-stored verdict would leave the comparison view
+nothing is written. A half stored verdict would leave the comparison view
 quietly wrong, which is worse than a visible failure.
 
-Re-running is an upsert, like manual scoring, so a second opinion replaces the
+Rerunning is an upsert, like manual scoring, so a second opinion replaces the
 first rather than accumulating.
 
-**On non-determinism:** running the judge twice on the same response with the
+**On non determinism:** running the judge twice on the same response with the
 same rubric does not reliably give the same answer. Observed during development:
 one response scored Tone 4 on the first run and 5 on the second, with different
 rationales both times. That is worth knowing before treating a single auto score
-as ground truth. For anything load-bearing, several runs would be more honest
+as ground truth. For anything load bearing, several runs would be more honest
 than one.
 
 ## Database schema
@@ -267,7 +267,7 @@ prompts        ──<  responses  ──<  scores  >──  rubric_criteria  >�
 ```
 
 - **prompts**: the input text, optionally titled.
-- **responses**: one model's answer to one prompt. `model` is a free-form
+- **responses**: one model's answer to one prompt. `model` is a free form
   string so new model releases don't need a migration.
 - **rubrics**: a named, reusable set of criteria. Independent of any prompt.
 - **rubric_criteria**: one scored dimension. Each carries its own `max_score`,
@@ -275,7 +275,7 @@ prompts        ──<  responses  ──<  scores  >──  rubric_criteria  >�
   weighted aggregates and a `position` for display order.
 - **scores**: one criterion applied to one response, tagged `manual` or `auto`.
 
-The `source` enum on `scores` is what makes the manual-vs-auto comparison work.
+The `source` enum on `scores` is what makes the manual vs auto comparison work.
 `UNIQUE (response_id, criterion_id, source)` lets a human score and a judge
 score coexist for the same cell while stopping either side from recording that
 cell twice. Deleting a prompt cascades to its responses and their scores;
@@ -291,5 +291,5 @@ rubrics are unaffected.
 - [x] Manual scoring endpoints
 - [ ] Score delete (update is handled by the upsert)
 - [x] React UI: prompt list, rubric builder, scoring panel, comparison view
-- [x] Auto-scoring via LLM + manual-vs-auto comparison view
-- [ ] Frontend tests (deliberate gap, hand-verified in a browser instead)
+- [x] Auto scoring via LLM + manual vs auto comparison view
+- [ ] Frontend tests (deliberate gap, hand verified in a browser instead)
