@@ -1,4 +1,5 @@
 import logging
+import os
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,10 +27,30 @@ logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="Model Response Scorer API")
 
-# Allow the frontend (running on a different port/container) to call this API
+# The local dev server always stays allowed, so a deployment setting
+# FRONTEND_URL does not break `docker compose up`.
+LOCAL_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+
+def allowed_origins() -> list[str]:
+    """Local dev origins, plus whatever FRONTEND_URL names.
+
+    FRONTEND_URL accepts a comma-separated list so a deployment can allow more
+    than one domain. Trailing slashes are stripped because a browser never puts
+    one on the Origin header, and an origin that does not match exactly is
+    silently refused.
+    """
+    configured = [
+        origin.strip().rstrip("/")
+        for origin in os.getenv("FRONTEND_URL", "").split(",")
+        if origin.strip()
+    ]
+    return [*LOCAL_ORIGINS, *configured]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten this before deploying anywhere real
+    allow_origins=allowed_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )

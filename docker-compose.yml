@@ -23,6 +23,8 @@ services:
       DATABASE_URL: postgresql://eval_user:eval_pass@db:5432/eval_db
       # watchfiles can't see inotify events through the Windows bind mount
       WATCHFILES_FORCE_POLLING: "true"
+      # only local dev runs uvicorn with --reload; see backend/Dockerfile
+      UVICORN_RELOAD: "1"
       # value comes from .env at the repo root, which is gitignored.
       # defaults to empty rather than erroring, so a missing key fails at
       # /generate with a 503 instead of stopping the whole stack from starting
@@ -36,7 +38,10 @@ services:
         condition: service_healthy
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      # the dev-server stage; the default stage is the production build
+      target: dev
     restart: unless-stopped
     environment:
       VITE_API_URL: http://localhost:8000

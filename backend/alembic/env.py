@@ -4,7 +4,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from database import Base
+from database import Base, normalise_database_url
 
 # imported for the side effect of registering every table on Base.metadata,
 # which is what --autogenerate diffs against
@@ -16,7 +16,9 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # escape % so URLs containing it survive configparser interpolation
-_url = os.getenv("DATABASE_URL", "postgresql://eval_user:eval_pass@db:5432/eval_db")
+_url = normalise_database_url(
+    os.getenv("DATABASE_URL", "postgresql://eval_user:eval_pass@db:5432/eval_db")
+)
 config.set_main_option("sqlalchemy.url", _url.replace("%", "%%"))
 
 target_metadata = Base.metadata

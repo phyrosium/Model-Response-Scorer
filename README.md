@@ -107,6 +107,80 @@ docker compose exec backend pytest
 The suite needs the `db` service up. It leaves the database exactly as it found
 it, so running it twice in a row is a good check that the rollback is working.
 
+## Deploying on Railway
+
+The repo is set up so both images build and run unmodified on Railway. Three
+things make that work: the backend listens on `$PORT`, the frontend Dockerfile's
+default stage is a production build served by a static server, and every piece
+of configuration comes from the environment.
+
+### 1. Create the project and database
+
+Create a new Railway project and add a **Postgres** database to it. Railway
+provisions it and exposes `DATABASE_URL` to the other services in the project,
+which is the variable the backend already reads. No code change is needed for
+this, and no value to copy by hand.
+
+### 2. Add the two services
+
+Add two services from this GitHub repo:
+
+| Service | Root directory | Builds |
+| --- | --- | --- |
+| backend | `backend` | `backend/Dockerfile` |
+| frontend | `frontend` | `frontend/Dockerfile`, `prod` stage |
+
+Generate a public domain for each one before setting any variables, because
+each service needs to know the other's domain.
+
+### 3. Set the backend variables
+
+| Variable | Value |
+| --- | --- |
+| `ANTHROPIC_API_KEY` | Your key. Required for `/generate` and `/auto-score`. |
+| `FRONTEND_URL` | The frontend's Railway domain, for example `https://frontend-production-abcd.up.railway.app` |
+| `DATABASE_URL` | Injected by Railway. Reference the Postgres service rather than typing a value. |
+
+`FRONTEND_URL` drives the CORS allowlist. Without it the browser blocks every
+request from the deployed frontend, which shows up as a network error in the UI
+rather than as anything obvious in the backend logs. It accepts a comma
+separated list if you need more than one origin, and `localhost:5173` stays
+allowed regardless so local development keeps working.
+
+### 4. Set the frontend variable
+
+| Variable | Value |
+| --- | --- |
+| `VITE_API_URL` | The backend's Railway domain, for example `https://backend-production-abcd.up.railway.app` |
+
+**This one is read at build time, not at run time.** Vite substitutes it into
+the JavaScript bundle during `npm run build`, so changing it later requires a
+redeploy of the frontend, not a restart. If the deployed app is calling
+`localhost:8000`, that is the cause: the bundle was built before the variable
+was set.
+
+Both URLs should have no trailing slash. The backend strips one from
+`FRONTEND_URL` defensively, since a browser never sends one on the `Origin`
+header and a mismatched origin is refused silently.
+
+### 5. Redeploy
+
+Redeploy both services once the variables are in place, so the frontend bundle
+picks up `VITE_API_URL` and the backend picks up the allowlist. The backend runs
+its migrations and seeds the starter rubrics on first boot, so the deployed app
+comes up with a working schema and rubrics with no further steps.
+
+### Notes
+
+- The backend binds `0.0.0.0:$PORT`, falling back to 8000 locally. `--reload` is
+  switched on only by `docker-compose.yml`, through `UVICORN_RELOAD`.
+- The frontend Dockerfile is multi stage. `docker-compose.yml` selects the `dev`
+  stage for the Vite dev server; the default final stage is the production
+  build, which is what Railway uses.
+- If your provider hands out a `postgres://` URL rather than `postgresql://`,
+  the backend rewrites it. SQLAlchemy 2 only registers the latter and rejects
+  the former with `NoSuchModuleError`.
+
 ## Frontend
 
 Three routes behind `react-router`:
@@ -131,7 +205,7 @@ than *Save*. It shows a running weighted total: each criterion contributes
 `value / max_score * weight`, divided by the total weight of the criteria that
 have been scored so far.
 
-The comparison screen puts both sources in one table with a per-criterion delta,
+The comparison screen puts both sources in one table with a per criterion delta,
 both rationales, and a summary line: how many criteria the two sides agreed on
 exactly, the mean absolute difference, and each side's weighted total.
 

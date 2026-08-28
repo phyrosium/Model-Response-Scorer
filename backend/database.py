@@ -3,8 +3,20 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql://eval_user:eval_pass@db:5432/eval_db"
+def normalise_database_url(url: str) -> str:
+    """Accept the legacy postgres:// scheme some providers still hand out.
+
+    SQLAlchemy 2 only registers the postgresql:// dialect and rejects the older
+    spelling outright with NoSuchModuleError.
+    """
+    prefix = "postgres://"
+    if url.startswith(prefix):
+        return "postgresql://" + url[len(prefix) :]
+    return url
+
+
+DATABASE_URL = normalise_database_url(
+    os.getenv("DATABASE_URL", "postgresql://eval_user:eval_pass@db:5432/eval_db")
 )
 
 # pool_pre_ping avoids handing out connections Postgres has already dropped,
