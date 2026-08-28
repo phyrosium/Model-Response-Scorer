@@ -44,7 +44,7 @@ applies any outstanding Alembic migrations, then seeds starter data, then hands
 off to uvicorn. A fresh clone therefore comes up with its schema in place and a
 few rubrics ready to use, with no manual steps.
 
-Both steps are safe to repeat. Migrations no-op once the database is at head,
+Both steps are safe to repeat. Migrations no op once the database is at head,
 and the seed does nothing unless the rubrics table is empty.
 
 ### Starter rubrics
@@ -71,7 +71,7 @@ convenience rather than something to run casually.
 ### Migrations
 
 Migrations are applied automatically at container start, so this is only needed
-to apply one mid-session without a restart:
+to apply one mid session without a restart:
 
 ```bash
 docker compose exec backend alembic upgrade head
@@ -192,14 +192,14 @@ Three routes behind `react-router`:
 | `/scoring` | Pick a prompt → response → rubric, then score each criterion |
 | `/comparison` | Run the LLM judge and compare its scores against the manual ones |
 | `/how-to` | The workflow in order, from writing a prompt to comparing scores |
-| `/about` | What the tool is for, including the judge non-determinism finding |
+| `/about` | What the tool is for, including the judge nondeterminism finding |
 
 `src/api/client.ts` is the only place that talks to the backend. It flattens
 FastAPI's two error shapes into one string, because `detail` is a plain string for an
 `HTTPException` but an array of field objects for a 422, and rendering the
 array directly would show `[object Object]` on every validation failure.
 
-The scoring panel prefills from existing manual scores, so re-opening a
+The scoring panel prefills from existing manual scores, so reopening a
 response shows what you already gave it and the buttons read *Update* rather
 than *Save*. It shows a running weighted total: each criterion contributes
 `value / max_score * weight`, divided by the total weight of the criteria that
@@ -224,7 +224,7 @@ Three containers, one network:
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/health` | API liveness plus a Postgres round-trip |
+| `GET` | `/health` | API liveness plus a Postgres round trip |
 | `POST` | `/prompts` | Create a prompt (`content` required, `title` optional) |
 | `GET` | `/prompts` | List prompts, newest first |
 | `POST` | `/generate` | Send a stored prompt to Claude and persist the reply |
@@ -250,12 +250,12 @@ Two details worth knowing about the call:
 
 - Adaptive thinking is on by default on Opus 5, so the response contains
   thinking blocks alongside text. Only `type == "text"` blocks are stored.
-  This is load-bearing rather than cosmetic: `ThinkingBlock` has no `.text`
+  This is load bearing rather than cosmetic: `ThinkingBlock` has no `.text`
   attribute at all, so iterating `.text` across every block raises
   `AttributeError` on any reply that includes reasoning.
 - A refusal comes back as HTTP 200 with `stop_reason == "refusal"`, so that is
   checked before the content is read. Refusals return 422 and store nothing.
-  Server-side fallbacks are deliberately *not* enabled: they would silently
+  Server side fallbacks are deliberately *not* enabled: they would silently
   answer with a different model while the row still said `claude-opus-5`,
   which would corrupt any model comparison.
 
@@ -273,7 +273,7 @@ sent. A `weight` of 0 is legal and means the criterion is scored but excluded
 from any weighted aggregate.
 
 Validation happens at the edge rather than falling through to Postgres:
-duplicate criterion names, a non-positive `max_score`, a negative `weight`, or
+duplicate criterion names, a nonpositive `max_score`, a negative `weight`, or
 an empty criteria list all return 422. A duplicate rubric name returns 409.
 Failed creates roll back cleanly, with no orphaned criteria.
 
@@ -304,7 +304,7 @@ weight) to render without a second request. Results are ordered by criterion
 position. Auto scores don't exist yet, but the endpoint was verified against an
 injected auto row so the comparison view can read from it unchanged.
 
-### Auto-scoring
+### Auto scoring
 
 `POST /auto-score` takes a response and a rubric, sends both to Claude with the
 criteria and their scales, and stores one `auto` score per criterion. It uses
