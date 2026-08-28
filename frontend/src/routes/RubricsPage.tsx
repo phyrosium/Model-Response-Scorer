@@ -94,7 +94,7 @@ export default function RubricsPage() {
           </div>
 
           <div className="divider" />
-          <label>Criteria — order here is the order they appear when scoring</label>
+          <label>Criteria (order here is the order they appear when scoring)</label>
 
           <div className="stack">
             {criteria.map((c, i) => (

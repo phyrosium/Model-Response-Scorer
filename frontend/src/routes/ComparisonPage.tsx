@@ -34,7 +34,7 @@ function weightedPct(rows: Row[], pick: (row: Row) => Score | undefined) {
 }
 
 function DeltaCell({ delta }: { delta: number | undefined }) {
-  if (delta === undefined) return <span className="muted">—</span>
+  if (delta === undefined) return <span className="muted">n/a</span>
   if (delta === 0) return <span style={{ color: 'var(--ok)' }}>0</span>
   const sign = delta > 0 ? '+' : ''
   return (
@@ -254,8 +254,8 @@ export default function ComparisonPage() {
 
           {missingManual > 0 && (
             <p className="small muted">
-              {missingManual} of {rows.length} criteria have no manual score yet
-              — score them on the Scoring page to compare.
+              {missingManual} of {rows.length} criteria have no manual score yet.
+              Score them on the Scoring page to compare.
             </p>
           )}
 
@@ -325,7 +325,7 @@ export default function ComparisonPage() {
                 difference <strong>{summary.meanAbs}</strong>
               </p>
               <p className="small">
-                Weighted total — manual <strong>{summary.manualPct}%</strong> ·
+                Weighted total: manual <strong>{summary.manualPct}%</strong> ·
                 auto <strong>{summary.autoPct}%</strong>
               </p>
             </>

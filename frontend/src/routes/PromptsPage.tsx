@@ -164,7 +164,7 @@ export default function PromptsPage() {
       <h2 style={{ fontSize: '1rem' }}>Prompts</h2>
       {prompts === null && <p className="muted">Loading…</p>}
       {prompts?.length === 0 && (
-        <p className="muted">No prompts yet — add one above.</p>
+        <p className="muted">No prompts yet. Add one above.</p>
       )}
       {prompts?.map((p) => (
         <PromptCard key={p.id} prompt={p} />
