@@ -263,7 +263,7 @@ than one.
 ## Database schema
 
 ```
-prompts        ──<  responses  ──<  scores  >──  rubric_criteria  >── rubrics
+prompts ──> responses ──> scores ──> rubric_criteria ──> rubrics
 ```
 
 - **prompts**: the input text, optionally titled.
