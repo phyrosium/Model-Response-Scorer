@@ -64,3 +64,40 @@ def test_zero_weight_allowed():
 def test_blank_rubric_name_rejected():
     with pytest.raises(ValidationError):
         RubricCreate(**valid(name=""))
+
+
+class TestScoreCreate:
+    """The per-criterion ceiling can't live here -- it needs the criterion's
+    max_score, so the endpoint checks it and it is covered by live verification
+    rather than by these tests."""
+
+    def test_accepts_a_plain_score(self):
+        from schemas import ScoreCreate
+
+        score = ScoreCreate(response_id=1, criterion_id=2, value=4)
+        assert score.value == 4
+        assert score.rationale is None
+
+    def test_rejects_negative_value(self):
+        from schemas import ScoreCreate
+
+        with pytest.raises(ValidationError):
+            ScoreCreate(response_id=1, criterion_id=2, value=-0.1)
+
+    def test_zero_is_a_legal_score(self):
+        from schemas import ScoreCreate
+
+        assert ScoreCreate(response_id=1, criterion_id=2, value=0).value == 0
+
+    def test_fractional_values_allowed(self):
+        """An LLM judge may return 4.5; the column is a float for this reason."""
+        from schemas import ScoreCreate
+
+        assert ScoreCreate(response_id=1, criterion_id=2, value=4.5).value == 4.5
+
+    def test_source_cannot_be_set_by_the_client(self):
+        """Passing source must not produce an auto-tagged score."""
+        from schemas import ScoreCreate
+
+        score = ScoreCreate(response_id=1, criterion_id=2, value=3, source="auto")
+        assert not hasattr(score, "source")

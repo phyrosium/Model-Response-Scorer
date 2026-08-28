@@ -8,6 +8,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from models import ScoreSource
+
 # what we send when the caller doesn't name a model
 DEFAULT_MODEL = "claude-opus-5"
 
@@ -85,3 +87,42 @@ class RubricOut(BaseModel):
     description: str | None
     created_at: datetime
     criteria: list[RubricCriterionOut]
+
+
+class ScoreCreate(BaseModel):
+    """A manual score for one criterion applied to one response.
+
+    `source` is not accepted from the client -- this endpoint only records manual
+    scores, and letting a caller claim `auto` would corrupt the comparison the
+    whole tool exists to make.
+    """
+
+    response_id: int
+    criterion_id: int
+    # the upper bound is per-criterion, so it can't be expressed here; the
+    # endpoint checks value against that criterion's max_score
+    value: float = Field(ge=0)
+    rationale: str | None = None
+
+
+class ScoreCriterionOut(BaseModel):
+    """Enough of the criterion to render a score without a second request."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    max_score: int
+    weight: float
+
+
+class ScoreOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    response_id: int
+    source: ScoreSource
+    value: float
+    rationale: str | None
+    created_at: datetime
+    criterion: ScoreCriterionOut

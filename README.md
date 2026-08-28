@@ -3,7 +3,10 @@
 A tool for generating LLM responses to a set of prompts, scoring them against custom rubrics, and comparing manual vs. automated scoring.
 
 ## Status
-🚧 Step 4: Rubric builder — rubrics and their criteria can be created and read. Scoring itself is not built yet.
+🚧 Step 5: Manual scoring — the backend is feature-complete for manual
+evaluation: prompts, generation, rubrics, and scoring all work over HTTP.
+**The frontend is still the Step 1 health-check page; real screens are the
+next milestone.**
 
 ## Stack
 - Frontend: React + TypeScript (Vite)
@@ -80,6 +83,8 @@ Three containers, one network:
 | `POST` | `/rubrics` | Create a rubric together with its criteria |
 | `GET` | `/rubrics` | List rubrics, each with its criteria |
 | `GET` | `/rubrics/{id}` | Fetch one rubric |
+| `POST` | `/scores` | Record a manual score for one criterion on one response |
+| `GET` | `/responses/{id}/scores` | Every score on a response, manual and auto |
 
 Interactive docs are at http://localhost:8000/docs.
 
@@ -123,6 +128,30 @@ duplicate criterion names, a non-positive `max_score`, a negative `weight`, or
 an empty criteria list all return 422. A duplicate rubric name returns 409.
 Failed creates roll back cleanly — no orphaned criteria.
 
+### Scoring
+
+`POST /scores` records manual scores only — `source` is not accepted from the
+client, since letting a caller claim `auto` would corrupt the very comparison
+this tool exists to make. It is set server-side to `manual`.
+
+The interesting validation is the per-criterion ceiling. `scores.value` has a
+`>= 0` check constraint in the database but **no upper bound**, because the
+maximum lives on `rubric_criteria.max_score` in a different table — Postgres
+check constraints can't reference another row. Verified directly: a raw
+`INSERT` of 99 against a `max_score = 3` criterion is accepted by the database.
+So `POST /scores` looks the criterion up and rejects anything above its
+`max_score` with a 422. That guard exists only at the API layer; writes made
+straight to Postgres can still violate it.
+
+Re-scoring the same cell returns 409 rather than overwriting — there is no
+update endpoint yet, which the scoring UI will need.
+
+`GET /responses/{id}/scores` returns manual and auto scores together, each
+tagged with its `source` and carrying enough of the criterion (name, max_score,
+weight) to render without a second request. Results are ordered by criterion
+position. Auto scores don't exist yet, but the endpoint was verified against an
+injected auto row so the comparison view can read from it unchanged.
+
 ## Database schema
 
 ```
@@ -151,5 +180,7 @@ rubrics are unaffected.
 - [ ] Remaining prompt CRUD (fetch by id, update, delete)
 - [x] Rubric builder (create + read)
 - [ ] Rubric edit/delete
-- [ ] Manual scoring UI
+- [x] Manual scoring endpoints
+- [ ] Score update/delete (needed before the scoring UI is usable)
+- [ ] **Next milestone: React UI** — prompt list, rubric builder, scoring panel
 - [ ] Auto-scoring via LLM + manual-vs-auto comparison view
