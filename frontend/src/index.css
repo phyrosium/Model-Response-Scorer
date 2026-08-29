@@ -36,7 +36,7 @@ header.top .inner {
   flex-wrap: wrap;
 }
 header.top h1 { font-size: 1.05rem; margin: 0; letter-spacing: -0.01em; }
-/* wraps because six links no longer fit on one line at phone widths */
+/* wraps so the nav links do not overflow at phone widths */
 nav { display: flex; gap: 1rem; flex-wrap: wrap; }
 nav a {
   color: var(--muted);
@@ -120,7 +120,6 @@ table.compare th { font-weight: 600; color: var(--muted); font-size: 0.8rem; }
 table.compare td:nth-child(2), table.compare td:nth-child(3) { width: 32%; }
 table.compare td:last-child { text-align: center; width: 4.5rem; }
 
-/* text-only pages fill the column like every other page */
 .prose h3 { margin: 0 0 0.3rem; font-size: 0.95rem; }
 .prose p { margin: 0 0 0.7rem; }
 .prose p:last-child { margin-bottom: 0; }

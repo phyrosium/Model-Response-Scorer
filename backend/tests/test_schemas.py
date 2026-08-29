@@ -67,9 +67,8 @@ def test_blank_rubric_name_rejected():
 
 
 class TestScoreCreate:
-    """The per-criterion ceiling can't live here -- it needs the criterion's
-    max_score, so the endpoint checks it and it is covered by live verification
-    rather than by these tests."""
+    """The per-criterion ceiling is not checked here: it needs the criterion's
+    max_score, so the endpoint enforces it. See test_scores_api.TestCeiling."""
 
     def test_accepts_a_plain_score(self):
         from schemas import ScoreCreate

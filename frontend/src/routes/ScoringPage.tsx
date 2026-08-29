@@ -170,8 +170,8 @@ export default function ScoringPage() {
   const response = (responses ?? []).find((r) => String(r.id) === responseId)
   const rubric = rubrics.find((r) => String(r.id) === rubricId)
 
-  // only manual scores prefill the form; auto scores will be shown alongside
-  // once auto-scoring exists
+  // only manual scores prefill this form; automated ones are shown on the
+  // comparison page
   const manualByCriterion = useMemo(() => {
     const map = new Map<number, Score>()
     for (const s of scores) {

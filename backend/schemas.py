@@ -65,9 +65,9 @@ class RubricCriterionOut(BaseModel):
 class RubricCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     description: str | None = None
-    # at least one criterion: there is no add-criterion endpoint yet, so an empty
-    # rubric could never become useful. `position` is taken from list order
-    # rather than being client-supplied.
+    # a rubric with no criteria could never be scored against, so at least one
+    # is required. `position` is taken from list order rather than being
+    # client-supplied.
     criteria: list[RubricCriterionCreate] = Field(min_length=1)
 
     @model_validator(mode="after")

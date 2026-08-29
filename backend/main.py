@@ -93,8 +93,7 @@ def list_prompts(db: Session = Depends(get_db)):
 def list_responses_for_prompt(prompt_id: int, db: Session = Depends(get_db)):
     """Every generated response for a prompt, newest first.
 
-    The scoring UI needs this to choose what to score -- without it a response is
-    only ever visible in the reply to the POST /generate that created it.
+    This is how the scoring and comparison screens choose what to score.
     """
     if db.get(Prompt, prompt_id) is None:
         raise HTTPException(404, f"No prompt with id {prompt_id}")
@@ -134,9 +133,8 @@ def generate_response(payload: GenerateRequest, db: Session = Depends(get_db)):
 def _load_rubric(db: Session, rubric_id: int) -> Rubric | None:
     """Fetch one rubric with its criteria eagerly loaded.
 
-    The eager load is what keeps the list endpoint off an N+1: measured at 2
-    queries with selectinload versus 1+N without, since serializing each rubric
-    touches its criteria.
+    Serializing a rubric touches its criteria, so without the eager load the
+    list endpoint would issue an extra query per rubric.
     """
     return db.scalars(
         select(Rubric)
@@ -251,8 +249,8 @@ def _load_score(db: Session, score_id: int) -> Score | None:
 def list_scores_for_response(response_id: int, db: Session = Depends(get_db)):
     """Every score on a response, manual and auto alike.
 
-    Auto scores don't exist yet, but the shape is already source-tagged so the
-    comparison view can read from this endpoint unchanged.
+    Each entry carries its source, so the comparison view reads both sides from
+    this one endpoint.
     """
     if db.get(Response, response_id) is None:
         raise HTTPException(404, f"No response with id {response_id}")
