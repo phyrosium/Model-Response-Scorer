@@ -4,7 +4,7 @@ Generate LLM responses to a prompt, score them against a custom rubric by hand,
 then have an LLM judge score the same response independently and compare the two
 side by side.
 
-**Live demo: <!-- TODO: paste the Railway frontend URL here -->**
+**[Live demo](https://bountiful-insight-production-1050.up.railway.app)**
 
 ## Why
 
