@@ -1,338 +1,143 @@
 # Model Response Scorer
 
-A tool for generating LLM responses to a set of prompts, scoring them against custom rubrics, and comparing manual vs. automated scoring.
+Generate LLM responses to a prompt, score them against a custom rubric by hand,
+then have an LLM judge score the same response independently and compare the two
+side by side.
 
-## Status
-Feature complete for the original roadmap. Write a prompt, generate a response
-from Claude, build a rubric, score the response by hand, have an LLM judge score
-it independently, and compare the two side by side.
+**Live demo: <!-- TODO: paste the Railway frontend URL here -->**
 
-## Stack
-- Frontend: React + TypeScript (Vite)
-- Backend: Python + FastAPI
-- Database: Postgres
-- Orchestration: Docker Compose
+## Why
+
+Using a model to grade model output is now a normal way to evaluate at a scale
+humans cannot match. It is only worth doing if the judge broadly agrees with a
+careful human on cases where you already know the answer. This tool makes that
+agreement, or the lack of it, visible on your own prompts and your own rubric
+rather than on a benchmark.
+
+So the judge is never shown the manual scores. Anchoring it to a number it was
+just handed would turn the comparison into a test of whether the model can copy.
+
+## A real result
+
+Prompt: *"What is the capital of France? Answer in one short sentence."*
+Response: *"The capital of France is Paris."* Scored against the **Answer
+quality** rubric:
+
+| Criterion | Max | Weight | Manual | Auto | Delta |
+| --- | --- | --- | --- | --- | --- |
+| Accuracy | 5 | 2 | 5 | 5 | 0 |
+| Concision | 3 | 1 | 3 | 3 | 0 |
+| Tone | 5 | 1 | 4 | **5** | **+1** |
+
+Weighted total: manual 95%, auto 100%. The disagreement runs both ways. On a
+verbose markdown answer to an arithmetic question the judge went the other
+direction, scoring Tone 4 against a human 5 and citing "slightly heavy bold and
+header formatting for such a short problem".
+
+**The judge is not deterministic.** Rerunning it on an unchanged response with
+an unchanged rubric does not reproduce its own answer: one response scored Tone
+4 on the first run and 5 on the second, with every rationale rewritten. A single
+automated score is a sample, not a measurement, and a one point gap may be judge
+variance rather than real disagreement. For anything load bearing, several runs
+and the spread between them would be more honest than one number.
 
 ## Running locally
 
 ```bash
+cp .env.example .env    # then add your ANTHROPIC_API_KEY
 docker compose up --build
 ```
 
-### API key
+Then open http://localhost:5173. The `/about` and `/how-to` pages in the app
+explain the workflow.
 
-`/generate` calls the Anthropic API, so it needs a key. Copy `.env.example`
-to `.env` and fill it in. `.env` is gitignored:
+The stack still starts without an API key. Only `/generate` and `/auto-score`
+fail, with a 503 naming what is missing.
 
-```bash
-cp .env.example .env
-```
+On first boot the backend applies migrations and seeds three starter rubrics
+(**Answer quality**, **Reasoning quality**, **Instruction following**), so a
+fresh clone comes up ready to use. Those are ordinary rows: edit, score against
+or delete them like any rubric you build yourself. Both steps are safe to
+repeat.
 
-`docker-compose.yml` reads `ANTHROPIC_API_KEY` from that file and injects it
-into the backend container. It defaults to empty, so the stack still starts
-without a key. Only `/generate` fails, with a 503 that says what's missing.
-
-Then check:
-- Frontend: http://localhost:5173 (should show API status + "database: connected")
-- Backend health check: http://localhost:8000/health
-- Backend root: http://localhost:8000/
-
-### What happens on startup
-
-The backend container runs `backend/entrypoint.sh` before starting the app. It
-applies any outstanding Alembic migrations, then seeds starter data, then hands
-off to uvicorn. A fresh clone therefore comes up with its schema in place and a
-few rubrics ready to use, with no manual steps.
-
-Both steps are safe to repeat. Migrations no op once the database is at head,
-and the seed does nothing unless the rubrics table is empty.
-
-### Starter rubrics
-
-`backend/seed.py` inserts three rubrics on a fresh database: **Answer quality**,
-**Reasoning quality** and **Instruction following**, each with three criteria.
-
-They are ordinary rows. Nothing in the application treats them as special, so
-they can be edited, scored against, or deleted exactly like a rubric built in
-the UI. The seed runs only when the rubrics table is completely empty, rather
-than checking each name, so a starter rubric you delete stays deleted instead of
-reappearing on the next restart.
-
-To edit what gets seeded, change `STARTER_RUBRICS` in `backend/seed.py`. To reset
-a database back to just the starter rubrics, drop the volume and start again:
-
-```bash
-docker compose down -v && docker compose up
-```
-
-That destroys every prompt, response and score as well, so it is a development
-convenience rather than something to run casually.
-
-### Migrations
-
-Migrations are applied automatically at container start, so this is only needed
-to apply one mid session without a restart:
-
-```bash
-docker compose exec backend alembic upgrade head
-```
-
-After changing anything in `backend/models.py`:
-
-```bash
-docker compose exec backend alembic revision --autogenerate -m "what changed"
-```
-
-Always read the generated file before applying it, since autogenerate does not
-notice everything (it missed the `score_source` enum teardown in the initial
-migration, which had to be added by hand).
-
-### Tests
+Tests:
 
 ```bash
 docker compose exec backend pytest
 ```
 
-`backend/tests/` has two kinds of test:
+Unit tests stub the Anthropic client to cover branches that are awkward to
+trigger live, such as a refusal or a reply with no text block. Endpoint tests run
+against the real Postgres inside a transaction that is rolled back afterwards, so
+the actual constraints and enum type are exercised without leaving rows behind.
+Running the suite twice in a row is a good check that the rollback works.
 
-- **Unit**: stubs the Anthropic client to cover branches that are awkward to
-  trigger live (a refusal, a reply with no text block, a missing API key), plus
-  the Pydantic validation rules.
-- **Endpoint**: runs against the real Postgres inside a transaction that is
-  rolled back after each test, so the actual constraints, enum type and unique
-  index are exercised without leaving rows behind. This is where the paths
-  Pydantic can't reach are covered: the per criterion ceiling, the 404s, the
-  duplicate rubric 409, and the upsert.
+The frontend has no automated tests. It was verified by hand in a browser
+against real data, which was judged an acceptable trade for this project.
 
-The suite needs the `db` service up. It leaves the database exactly as it found
-it, so running it twice in a row is a good check that the rollback is working.
+## Stack
 
-## Deploying on Railway
+React and TypeScript (Vite), FastAPI, Postgres, orchestrated with Docker
+Compose. Three containers on one network: `db`, `backend`, `frontend`.
 
-The repo is set up so both images build and run unmodified on Railway. Three
-things make that work: the backend listens on `$PORT`, the frontend Dockerfile's
-default stage is a production build served by a static server, and every piece
-of configuration comes from the environment.
+## Screens
 
-### 1. Create the project and database
-
-Create a new Railway project and add a **Postgres** database to it. Railway
-provisions it and exposes `DATABASE_URL` to the other services in the project,
-which is the variable the backend already reads. No code change is needed for
-this, and no value to copy by hand.
-
-### 2. Add the two services
-
-Add two services from this GitHub repo:
-
-| Service | Root directory | Builds |
-| --- | --- | --- |
-| backend | `backend` | `backend/Dockerfile` |
-| frontend | `frontend` | `frontend/Dockerfile`, `prod` stage |
-
-Generate a public domain for each one before setting any variables, because
-each service needs to know the other's domain.
-
-### 3. Set the backend variables
-
-| Variable | Value |
+| Route | Purpose |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | Your key. Required for `/generate` and `/auto-score`. |
-| `FRONTEND_URL` | The frontend's Railway domain, for example `https://frontend-production-abcd.up.railway.app` |
-| `DATABASE_URL` | Injected by Railway. Reference the Postgres service rather than typing a value. |
-
-`FRONTEND_URL` drives the CORS allowlist. Without it the browser blocks every
-request from the deployed frontend, which shows up as a network error in the UI
-rather than as anything obvious in the backend logs. It accepts a comma
-separated list if you need more than one origin, and `localhost:5173` stays
-allowed regardless so local development keeps working.
-
-### 4. Set the frontend variable
-
-| Variable | Value |
-| --- | --- |
-| `VITE_API_URL` | The backend's Railway domain, for example `https://backend-production-abcd.up.railway.app` |
-
-**This one is read at build time, not at run time.** Vite substitutes it into
-the JavaScript bundle during `npm run build`, so changing it later requires a
-redeploy of the frontend, not a restart. If the deployed app is calling
-`localhost:8000`, that is the cause: the bundle was built before the variable
-was set.
-
-Both URLs should have no trailing slash. The backend strips one from
-`FRONTEND_URL` defensively, since a browser never sends one on the `Origin`
-header and a mismatched origin is refused silently.
-
-### 5. Redeploy
-
-Redeploy both services once the variables are in place, so the frontend bundle
-picks up `VITE_API_URL` and the backend picks up the allowlist. The backend runs
-its migrations and seeds the starter rubrics on first boot, so the deployed app
-comes up with a working schema and rubrics with no further steps.
-
-### Notes
-
-- The backend binds `0.0.0.0:$PORT`, falling back to 8000 locally. `--reload` is
-  switched on only by `docker-compose.yml`, through `UVICORN_RELOAD`.
-- The frontend Dockerfile is multi stage. `docker-compose.yml` selects the `dev`
-  stage for the Vite dev server; the default final stage is the production
-  build, which is what Railway uses.
-- If your provider hands out a `postgres://` URL rather than `postgresql://`,
-  the backend rewrites it. SQLAlchemy 2 only registers the latter and rejects
-  the former with `NoSuchModuleError`.
-
-## Frontend
-
-Three routes behind `react-router`:
-
-| Route | Screen |
-| --- | --- |
-| `/prompts` | Write prompts, generate responses against a chosen model, read them back |
-| `/rubrics` | Build a rubric with any number of criteria; list existing ones |
-| `/scoring` | Pick a prompt → response → rubric, then score each criterion |
-| `/comparison` | Run the LLM judge and compare its scores against the manual ones |
-| `/how-to` | The workflow in order, from writing a prompt to comparing scores |
-| `/about` | What the tool is for, including the judge nondeterminism finding |
-
-`src/api/client.ts` is the only place that talks to the backend. It flattens
-FastAPI's two error shapes into one string, because `detail` is a plain string for an
-`HTTPException` but an array of field objects for a 422, and rendering the
-array directly would show `[object Object]` on every validation failure.
-
-The scoring panel prefills from existing manual scores, so reopening a
-response shows what you already gave it and the buttons read *Update* rather
-than *Save*. It shows a running weighted total: each criterion contributes
-`value / max_score * weight`, divided by the total weight of the criteria that
-have been scored so far.
-
-The comparison screen puts both sources in one table with a per criterion delta,
-both rationales, and a summary line: how many criteria the two sides agreed on
-exactly, the mean absolute difference, and each side's weighted total.
-
-**Known gap: the frontend has no automated tests.** Everything here was verified
-by hand in a browser against real data. Adding coverage would mean Vitest,
-Testing Library and a mocked API layer; that was judged not worth the scope for
-this project.
-
-## Architecture
-Three containers, one network:
-- `db`: Postgres 16
-- `backend`: FastAPI, connects to `db`, exposes REST endpoints
-- `frontend`: Vite dev server, calls `backend` over HTTP
+| `/prompts` | Write prompts, generate responses against a chosen model |
+| `/rubrics` | Build a rubric with any number of weighted criteria |
+| `/scoring` | Pick a prompt, response and rubric, then score each criterion |
+| `/comparison` | Run the judge and compare its scores against the manual ones |
+| `/how-to` | The workflow in order |
+| `/about` | What the tool is for, including the nondeterminism finding |
 
 ## API
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/health` | API liveness plus a Postgres round trip |
-| `POST` | `/prompts` | Create a prompt (`content` required, `title` optional) |
+| `GET` | `/health` | Liveness plus a Postgres round trip |
+| `POST` | `/prompts` | Create a prompt |
 | `GET` | `/prompts` | List prompts, newest first |
+| `GET` | `/prompts/{id}/responses` | Responses generated for a prompt |
 | `POST` | `/generate` | Send a stored prompt to Claude and persist the reply |
 | `POST` | `/rubrics` | Create a rubric together with its criteria |
-| `GET` | `/rubrics` | List rubrics, each with its criteria |
+| `GET` | `/rubrics` | List rubrics with their criteria |
 | `GET` | `/rubrics/{id}` | Fetch one rubric |
-| `POST` | `/scores` | Upsert the manual score for one criterion on one response |
+| `POST` | `/scores` | Upsert the manual score for one criterion |
 | `GET` | `/responses/{id}/scores` | Every score on a response, manual and auto |
-| `POST` | `/auto-score` | Have an LLM judge score a response against a whole rubric |
+| `POST` | `/auto-score` | Have the judge score a response against a rubric |
 
-Interactive docs are at http://localhost:8000/docs.
+Interactive docs at http://localhost:8000/docs.
 
-### Generation is synchronous
+## Design decisions worth knowing
 
-`POST /generate` takes a `prompt_id` and an optional `model` (defaults to
-`claude-opus-5`), calls the Anthropic API, and blocks until the reply comes
-back. That is a deliberate choice for this project's workload, which is a small batch
-of responses generated by hand. A production version handling real volume
-would put generation behind a task queue and return a job id immediately;
-that's noted as a future improvement rather than built now.
+**Generation is synchronous.** `/generate` blocks until the model replies, which
+suits a small batch scored by hand. Real volume would want a task queue and a job
+id instead.
 
-Two details worth knowing about the call:
+**Only text blocks are stored.** Adaptive thinking is on by default, so a reply
+carries thinking blocks alongside text. This is load bearing rather than
+cosmetic: `ThinkingBlock` has no `.text` attribute, so iterating `.text` across
+every block raises `AttributeError` on any reply that includes reasoning.
 
-- Adaptive thinking is on by default on Opus 5, so the response contains
-  thinking blocks alongside text. Only `type == "text"` blocks are stored.
-  This is load bearing rather than cosmetic: `ThinkingBlock` has no `.text`
-  attribute at all, so iterating `.text` across every block raises
-  `AttributeError` on any reply that includes reasoning.
-- A refusal comes back as HTTP 200 with `stop_reason == "refusal"`, so that is
-  checked before the content is read. Refusals return 422 and store nothing.
-  Server side fallbacks are deliberately *not* enabled: they would silently
-  answer with a different model while the row still said `claude-opus-5`,
-  which would corrupt any model comparison.
+**Refusals return 422 and store nothing.** A refusal arrives as HTTP 200 with
+`stop_reason == "refusal"`, so that is checked before the content is read. Server
+side fallbacks are deliberately not enabled, since they would answer with a
+different model while the row still claimed `claude-opus-5`.
 
-Nothing is written to `responses` unless generation succeeds.
+**A judge verdict is accepted whole or not at all.** A skipped criterion, an
+invented id, a double score or an out of range value rejects the entire batch
+with a 502. A half stored verdict would leave the comparison quietly wrong, which
+is worse than a visible failure.
 
-### Rubrics
+**Score writes are upserts.** Resubmitting a cell replaces the previous score
+rather than erroring, because a scoring panel is used by changing your mind. A
+single `ON CONFLICT DO UPDATE` keeps it atomic, and the row keeps its original
+`id` and `created_at`.
 
-A rubric is created in one call along with all of its criteria. There is no
-separate add criterion endpoint, so a rubric must be posted with at least one
-criterion or it could never be scored against.
-
-`position` is assigned from the order criteria appear in the request rather
-than being accepted from the client, so display order is whatever order you
-sent. A `weight` of 0 is legal and means the criterion is scored but excluded
-from any weighted aggregate.
-
-Validation happens at the edge rather than falling through to Postgres:
-duplicate criterion names, a nonpositive `max_score`, a negative `weight`, or
-an empty criteria list all return 422. A duplicate rubric name returns 409.
-Failed creates roll back cleanly, with no orphaned criteria.
-
-### Scoring
-
-`POST /scores` records manual scores only. `source` is not accepted from the
-client, since letting a caller claim `auto` would corrupt the very comparison
-this tool exists to make. It is set server side to `manual`.
-
-The interesting validation is the per criterion ceiling. `scores.value` has a
-`>= 0` check constraint in the database but **no upper bound**, because the
-maximum lives on `rubric_criteria.max_score` in a different table, and Postgres
-check constraints can't reference another row. Verified directly: a raw
-`INSERT` of 99 against a `max_score = 3` criterion is accepted by the database.
-So `POST /scores` looks the criterion up and rejects anything above its
-`max_score` with a 422. That guard exists only at the API layer; writes made
-straight to Postgres can still violate it.
-
-`POST /scores` is an upsert: re submitting a cell replaces the existing manual
-score rather than erroring, because a scoring panel is used by changing your
-mind. It's a single `ON CONFLICT DO UPDATE` rather than a read then write, so
-two concurrent submissions for the same cell can't both insert. The row keeps
-its original `id` and `created_at`.
-
-`GET /responses/{id}/scores` returns manual and auto scores together, each
-tagged with its `source` and carrying enough of the criterion (name, max_score,
-weight) to render without a second request. Results are ordered by criterion
-position. Auto scores don't exist yet, but the endpoint was verified against an
-injected auto row so the comparison view can read from it unchanged.
-
-### Auto scoring
-
-`POST /auto-score` takes a response and a rubric, sends both to Claude with the
-criteria and their scales, and stores one `auto` score per criterion. It uses
-structured outputs (`client.messages.parse`) so the verdict comes back as a
-validated object rather than prose to be parsed.
-
-Two decisions matter more than the rest:
-
-**The judge is never shown the manual scores.** Anchoring it to the human's
-numbers would make the comparison meaningless, since it would be measuring how well
-Claude copies a number it was just handed. There is a test asserting the manual
-rationale never appears in anything sent to the judge.
-
-**A verdict is accepted whole or not at all.** If the judge skips a criterion,
-invents an id that isn't in the rubric, scores one twice, or returns a value
-outside that criterion's range, the entire batch is rejected with a 502 and
-nothing is written. A half stored verdict would leave the comparison view
-quietly wrong, which is worse than a visible failure.
-
-Rerunning is an upsert, like manual scoring, so a second opinion replaces the
-first rather than accumulating.
-
-**On non determinism:** running the judge twice on the same response with the
-same rubric does not reliably give the same answer. Observed during development:
-one response scored Tone 4 on the first run and 5 on the second, with different
-rationales both times. That is worth knowing before treating a single auto score
-as ground truth. For anything load bearing, several runs would be more honest
-than one.
+**Validation happens at the edge.** Duplicate criterion names, a nonpositive
+`max_score`, a negative `weight` and empty criteria lists all return 422 rather
+than surfacing as a 500 from a database constraint.
 
 ## Database schema
 
@@ -340,30 +145,65 @@ than one.
 prompts ──> responses ──> scores ──> rubric_criteria ──> rubrics
 ```
 
-- **prompts**: the input text, optionally titled.
-- **responses**: one model's answer to one prompt. `model` is a free form
-  string so new model releases don't need a migration.
-- **rubrics**: a named, reusable set of criteria. Independent of any prompt.
-- **rubric_criteria**: one scored dimension. Each carries its own `max_score`,
-  so a single rubric can mix a 1–5 and a 1–10 scale, plus a `weight` for
-  weighted aggregates and a `position` for display order.
-- **scores**: one criterion applied to one response, tagged `manual` or `auto`.
+Each criterion carries its own `max_score`, so one rubric can mix a 0 to 5 and a
+0 to 3 scale, plus a `weight` for aggregates and a `position` for display order.
+A weight of 0 means the criterion is scored but excluded from the total.
 
-The `source` enum on `scores` is what makes the manual vs auto comparison work.
-`UNIQUE (response_id, criterion_id, source)` lets a human score and a judge
-score coexist for the same cell while stopping either side from recording that
-cell twice. Deleting a prompt cascades to its responses and their scores;
-rubrics are unaffected.
+The `source` enum on `scores` is what makes the comparison work.
+`UNIQUE (response_id, criterion_id, source)` lets a human score and a judge score
+coexist for the same cell while stopping either side from recording it twice.
+Deleting a prompt cascades to its responses and their scores; rubrics are
+unaffected.
+
+## Deploying
+
+Both images build and run unmodified on a platform that injects `PORT`. The
+backend binds `0.0.0.0:$PORT`, the frontend Dockerfile's default stage is a
+production build served by a static server, and all configuration comes from the
+environment.
+
+On Railway: add a Postgres plugin, then two services from this repo with root
+directories `backend` and `frontend`. Generate both domains first, since each
+service needs the other's.
+
+| Service | Variable | Value |
+| --- | --- | --- |
+| backend | `ANTHROPIC_API_KEY` | your key |
+| backend | `FRONTEND_URL` | the frontend domain, for the CORS allowlist |
+| backend | `DATABASE_URL` | reference the Postgres service, do not type it |
+| frontend | `VITE_API_URL` | the backend domain |
+
+`VITE_API_URL` is read at **build** time, not run time. Vite substitutes it into
+the bundle, so changing it needs a redeploy rather than a restart. A deployed app
+still calling `localhost:8000` means the bundle was built before the variable was
+set. Neither URL should have a trailing slash.
+
+## Notable issues encountered
+
+- Nothing ran `alembic upgrade head`, so a fresh clone came up with no tables at
+  all. Migrations and seeding now run from the container entrypoint.
+- Alembic's autogenerate omitted the `score_source` enum teardown, so downgrade
+  followed by upgrade failed with `DuplicateObject`. The drop was added by hand.
+- A UTF-8 BOM on `.env` made Compose read the variable name as
+  `﻿ANTHROPIC_API_KEY`, so the key silently never reached the container.
+- A CRLF `entrypoint.sh` dies in the Linux container with `set: Illegal option
+  -`. `.gitattributes` pins shell scripts to LF so a Windows clone still works.
+- `vite preview` answers 403 to any host it does not recognise, which would have
+  meant a 403 on every request to a deployed domain. The production stage serves
+  the built output with a static server instead.
+- `scores.value` has no upper bound in the database, because the maximum lives on
+  `rubric_criteria.max_score` in another table and a Postgres check constraint
+  cannot reference another row. The ceiling is enforced in the endpoint, so
+  writes made straight to Postgres can still violate it.
 
 ## Roadmap
-- [x] Docker skeleton with health check across all three services
-- [x] Database schema (prompts, responses, rubrics, criteria, scores)
-- [x] Prompt create/list + synchronous LLM generation endpoint
-- [ ] Remaining prompt CRUD (fetch by id, update, delete)
-- [x] Rubric builder (create + read)
-- [ ] Rubric edit/delete
+
+- [x] Docker skeleton, schema and migrations
+- [x] Prompt create/list and synchronous generation
+- [x] Rubric builder (create and read)
 - [x] Manual scoring endpoints
-- [ ] Score delete (update is handled by the upsert)
-- [x] React UI: prompt list, rubric builder, scoring panel, comparison view
-- [x] Auto scoring via LLM + manual vs auto comparison view
+- [x] React UI: prompts, rubrics, scoring, comparison
+- [x] Auto scoring via LLM judge and the comparison view
+- [ ] Remaining prompt CRUD (fetch by id, update, delete)
+- [ ] Rubric edit/delete, score delete
 - [ ] Frontend tests (deliberate gap, hand verified in a browser instead)
